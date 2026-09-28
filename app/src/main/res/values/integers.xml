@@ -1,0 +1,4 @@
+<resources>
+    <!-- ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE (1 << 30), API 34+. -->
+    <integer name="foreground_service_type">1073741824</integer>
+</resources>

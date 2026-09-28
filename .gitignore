@@ -1,0 +1,17 @@
+.gradle/
+.tools/
+**/build/
+local.properties
+*.jks
+*.keystore
+.idea/
+dist/
+*.apk
+*.aab
+*.idsig
+*.log
+.DS_Store
+Thumbs.db
+.env
+.env.*
+!.env.example
