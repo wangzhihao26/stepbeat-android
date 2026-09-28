@@ -42,13 +42,13 @@
 .\gradlew.bat assembleDebug
 ```
 
-标准 Gradle 构建需要能够访问 Gradle 分发站点、Google Maven 和 Maven Central。本机受网络及 SDK 条件限制，未执行此构建路径。Wrapper 启动文件由本机官方 Gradle 7.2 生成，下载并启动的 Gradle 版本为 8.11.1。
+标准 Gradle 构建需要能够访问 Gradle 分发站点、Google Maven 和 Maven Central。此构建路径已在 GitHub Actions 上通过；本机使用离线脚本验证。Wrapper 启动文件由本机官方 Gradle 7.2 生成，下载并启动的 Gradle 版本为 8.11.1。
 
 Linux / macOS 使用 `./gradlew assembleDebug`。标准构建产物位于 `app/build/outputs/apk/debug/app-debug.apk`，Windows 离线脚本产物位于 `dist/stepbeat-debug.apk`。
 
-### 自动构建
+### 手动构建
 
-推送到 `main`、提交 Pull Request 或手动运行工作流时，GitHub Actions 会先执行计时算法测试，再构建 APK，成功后保留安装包 14 天。配置见 `.github/workflows/android.yml`。
+GitHub Actions 仅在手动点击 Run workflow 时运行，推送代码和提交 Pull Request 不触发构建。手动运行时会先执行计时算法测试，再构建 APK，成功后保留安装包 14 天。配置见 `.github/workflows/android.yml`。
 
 ## 实现结构
 
