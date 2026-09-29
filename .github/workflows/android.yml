@@ -27,8 +27,9 @@ jobs:
       - name: Test cadence clock
         run: |
           mkdir -p app/build/clock-tests
-          javac --release 8 -encoding UTF-8 -d app/build/clock-tests app/src/main/java/com/stepbeat/app/BeatClock.java tests/BeatClockTest.java
+          javac --release 8 -encoding UTF-8 -d app/build/clock-tests app/src/main/java/com/stepbeat/app/BeatClock.java app/src/main/java/com/stepbeat/app/TrainingClock.java tests/BeatClockTest.java tests/TrainingClockTest.java
           java -cp app/build/clock-tests com.stepbeat.app.BeatClockTest
+          java -cp app/build/clock-tests com.stepbeat.app.TrainingClockTest
       - name: Build debug APK
         run: bash ./gradlew --no-daemon assembleDebug
       - name: Upload debug APK

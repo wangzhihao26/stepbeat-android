@@ -24,7 +24,7 @@ public final class MainActivity extends Activity {
     private DialView dial;
     private SeekBar bpmSlider;
     private Button play, reset, tap;
-    private TextView status, elapsed, beats, durationLabel;
+    private TextView status, elapsed, beats, durationLabel, backgroundStatus;
     private Switch soundSwitch, vibrationSwitch;
     private boolean syncing;
     private long seenBeat = -1;
@@ -125,6 +125,16 @@ public final class MainActivity extends Activity {
         stats.addView(stat(beats, "已发出节拍"), new LinearLayout.LayoutParams(0, -2, 1)); content.addView(stats);
         space(content, 16); TextView note = text("一拍一步 · 以上为目标步频，不是实际步数\n可锁屏使用，声音大小同时受系统媒体音量控制", 11, MUTED);
         note.setGravity(Gravity.CENTER); note.setLineSpacing(dp(4), 1); content.addView(note);
+        space(content, 18);
+        LinearLayout background = card(); background.addView(text("锁屏与后台运行", 15, WHITE));
+        backgroundStatus = text("", 12, MUTED); backgroundStatus.setLineSpacing(dp(4), 1); space(background, 8); background.addView(backgroundStatus);
+        LinearLayout backgroundButtons = row();
+        Button powerSettings = button("后台运行设置", BG, GREEN), diagnostics = button("运行诊断", BG, MUTED);
+        LinearLayout.LayoutParams powerParams = new LinearLayout.LayoutParams(0, dp(48), 1); powerParams.rightMargin = dp(8);
+        backgroundButtons.addView(powerSettings, powerParams); backgroundButtons.addView(diagnostics, new LinearLayout.LayoutParams(0, dp(48), 1));
+        space(background, 12); background.addView(backgroundButtons); content.addView(background);
+        powerSettings.setOnClickListener(v -> showBackgroundSettings());
+        diagnostics.setOnClickListener(v -> showDiagnostics());
 
         LinearLayout footer = row(); footer.setPadding(dp(24), dp(12), dp(24), dp(14));
         reset = button("结束", CARD, MUTED); footer.addView(reset, new LinearLayout.LayoutParams(dp(72), dp(56)));
@@ -139,7 +149,7 @@ public final class MainActivity extends Activity {
     }
 
     private void togglePlayback() {
-        if (MetronomeService.state.running) { send(MetronomeService.PAUSE); return; }
+        if (MetronomeService.state.running || MetronomeService.state.waitingForFocus) { send(MetronomeService.PAUSE); return; }
         if (MetronomeService.alive) return;
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED
                 && !getPreferences(MODE_PRIVATE).getBoolean("notificationAsked", false)) {
@@ -204,10 +214,10 @@ public final class MainActivity extends Activity {
         @Override public void run() {
             MetronomeService.Snapshot s = MetronomeService.state;
             elapsed.setText(time(s.elapsedNow())); beats.setText(String.valueOf(s.beats));
-            play.setText(s.running ? "Ⅱ  暂停节拍" : (s.elapsed > 0 && !s.complete ? "▶  继续训练" : "▶  开始节拍"));
-            play.setEnabled(s.running || !MetronomeService.alive);
-            reset.setEnabled(s.beats > 0 || s.running); reset.setAlpha(reset.isEnabled() ? 1 : .4f);
-            status.setText(s.running ? "●  " + Settings.MODES[settings.mode] + "中 · 跟随节拍" : s.complete ? "✓  本次训练已完成" : s.elapsed > 0 ? "Ⅱ  已暂停，随时继续" : "●  准备开始");
+            play.setText(s.waitingForFocus ? "Ⅱ  取消自动继续" : s.running ? "Ⅱ  暂停节拍" : (s.elapsed > 0 && !s.complete ? "▶  继续训练" : "▶  开始节拍"));
+            play.setEnabled(s.running || s.waitingForFocus || !MetronomeService.alive);
+            reset.setEnabled(s.beats > 0 || s.running || s.waitingForFocus); reset.setAlpha(reset.isEnabled() ? 1 : .4f);
+            status.setText(s.waitingForFocus ? "Ⅱ  音频暂被占用，等待恢复" : s.running ? "●  " + Settings.MODES[settings.mode] + "中 · 跟随节拍" : s.complete ? "✓  本次训练已完成" : s.elapsed > 0 ? "Ⅱ  已暂停，随时继续" : "●  准备开始");
             if (s.running && settings.minutes > 0) durationLabel.setText("剩余 " + time(Math.max(0, settings.minutes * 60_000L - s.elapsedNow())));
             else durationLabel.setText(settings.minutes == 0 ? "自由练习" : "到时自动停止");
             if (s.beats != seenBeat) { if (s.running) dial.pulseAt = SystemClock.uptimeMillis(); seenBeat = s.beats; }
@@ -216,9 +226,39 @@ public final class MainActivity extends Activity {
             seenMessage = message; dial.invalidate(); ui.postDelayed(this, 50);
         }
     };
-    @Override protected void onResume() { super.onResume(); ui.post(refresh); }
+    @Override protected void onResume() {
+        super.onResume();
+        PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+        backgroundStatus.setText(power.isIgnoringBatteryOptimizations(getPackageName())
+            ? "已豁免系统电池优化。若锁屏后仍停止，请检查手机的后台运行限制，并查看运行诊断。"
+            : "当前未豁免电池优化。若锁屏十几分钟后停止，可在系统设置中允许后台运行。仅有常驻通知无法保证持续运行。");
+        ui.post(refresh);
+    }
     @Override protected void onPause() { ui.removeCallbacks(refresh); super.onPause(); }
     private String time(long millis) { long seconds = millis / 1000; return String.format(Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60); }
+
+    private void showBackgroundSettings() {
+        new AlertDialog.Builder(this).setTitle("允许锁屏后持续运行")
+            .setMessage("在系统设置中找到“步调”，将电池策略改为“不限制”或允许后台运行。部分手机还需要在应用详情中允许自启动。\n\n不同手机名称可能不同，这可能增加耗电；应用不会自动修改这些设置。若仍停止，请打开“运行诊断”查看记录。")
+            .setPositiveButton("电池优化设置", (d, w) -> openSystemSettings(new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)))
+            .setNeutralButton("应用详情", (d, w) -> openSystemSettings(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:" + getPackageName()))))
+            .setNegativeButton("暂不设置", null).show();
+    }
+    private void openSystemSettings(Intent intent) {
+        try { startActivity(intent); }
+        catch (ActivityNotFoundException | SecurityException e) { toast("请在手机设置中打开：应用 → 步调 → 电池或后台运行"); }
+    }
+    private void showDiagnostics() {
+        String report = RunJournal.describe(this);
+        TextView details = text(report, 13, WHITE); details.setTextIsSelectable(true); details.setPadding(dp(20), dp(8), dp(20), dp(8));
+        ScrollView scroll = new ScrollView(this); scroll.addView(details);
+        new AlertDialog.Builder(this).setTitle("运行诊断").setView(scroll).setNegativeButton("关闭", null)
+            .setPositiveButton("复制记录", (d, w) -> {
+                ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("步调运行诊断", report));
+                toast("诊断记录已复制");
+            }).show();
+    }
 
     private interface ValueChanged { void accept(int value); }
     private SeekBar.OnSeekBarChangeListener slider(ValueChanged changed) {
